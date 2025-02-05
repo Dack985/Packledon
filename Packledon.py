@@ -2,7 +2,7 @@
 from itertools import count
 from pyfiglet import Figlet
 import scapy.all as scapy #need scapy for network control/access 
-from scapy.all import *
+#from scapy.all import *
 import sys
 import ipaddress
 #create banner
