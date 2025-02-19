@@ -1,11 +1,11 @@
 #imports
 from itertools import count
 from pyfiglet import Figlet
-#import scapy.all as scapy #need scapy for network control/access 
+#import scapy.all as scapy #need scapy for network control/access
 from scapy.all import *
 import sys
 import ipaddress
-
+import dpkt
 
 #function for arp and ping scanning aka option 1
 def arp_and_ping_scanning():
@@ -53,7 +53,16 @@ def arp_and_ping_scanning():
 
 def enter_and_read_pcap():
   pcap_file_path = input("Enter the pcap file path: ")
-
+  packets = rdpcap(pcap_file_path)
+  for packets in packets:
+      eth = dpkt.ethernet.Ethernet(bytes(packet))
+      if isinstance(ip.data, dpkt.tcp.TCP):
+          tcp = ip.data
+          print(f"Source IP: {ip.src}")
+          print(f"Destination IP: {ip.dst}")
+          print(f"Source Port: {tcp.sport}")
+          print(f"Destination port: {tcp.dport}")
+          print(f"Payload: {tcp.data}\n")
   try:
       with PcapReader(pcap_file_path) as pcap:
           for packet in pcap:
@@ -147,7 +156,7 @@ def tcp_syn_flood(target_ip):
         print("\n[+] Stopping Dos spoofing attack. Closing the application...")
 
 def dos_attack():
-    target_ip = input("Please enter the target IP address for the ping of death attack: ")    
+    target_ip = input("Please enter the target IP address for the ping of death attack: ")
     try:
         ping_of_death(target_ip)
         print(f"[+] Ping of Death attack on {target_ip} initiated.")
@@ -193,7 +202,7 @@ def main():
     print(f.renderText('Packledon'))
     print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?\n6. Perform a Teardrop attack?")
     user_determination= input("Please enter your selection from the above choices:" )
-    
+
     print(user_determination)
 
     if user_determination == "1":
